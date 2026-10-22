@@ -47,16 +47,45 @@ mensagens e terminal.
 | `main` | espelho do original (marmottajr/habblaud); sem commits próprios |
 | `feat/remote-mode` | modo remoto (PR 2 para o original) — nasce de `main` |
 | `feat/cursor-adapter` | fonte do Cursor (PR 1 para o original) — nasce de `main` |
+| `feat/idle-leave` | saída por inatividade `HABBLAUD_IDLE_LEAVE_MIN` (PR para o original) — nasce de `main` |
 | `hrq` | este contexto + junção das features para rodar no LXC |
+
+`feat/cursor-adapter` depende de `feat/idle-leave` (o Cursor usa a mesma variável como janela de presença):
+os PRs para o original saem nesta ordem: `feat/idle-leave`, depois `feat/cursor-adapter`. `feat/remote-mode`
+é independente. Correção numa feature: commit na branch dela e merge para a frente
+(`feat/idle-leave` → `feat/cursor-adapter` → `hrq`); nunca corrigir direto na `hrq`.
+
+## Estado em 22/out/2026
+
+- `hrq` tem as três features juntas; testes e typecheck verdes.
+- Serviço `habblaud.service` (systemd do usuário, porta 4749, `npm run dev` na worktree `feat-cursor-adapter`)
+  com `HABBLAUD_IDLE_LEAVE_MIN=10` no drop-in `~/.config/systemd/user/habblaud.service.d/idle-leave.conf`.
+- Docker na 4747 segue o 0.8.0 original.
+
+## Saída por inatividade (`feat/idle-leave`)
+
+- Antes, o Claude Code só saía do escritório quando a sessão fechava (`sessions/<pid>.json` some); os 10 min valiam
+  só para o Cursor. Agora `HABBLAUD_IDLE_LEAVE_MIN` (desligada por padrão) vale para todas as fontes, no `Office`.
+- Principal ocioso há N min, sem subagente rodando e sem permissão pendente, sai (aparece `offline` por 20 s e some;
+  sala vazia some). Volta ao trabalhar, pedir permissão/pergunta, esperar shell ou em `/clear`/`/resume`.
+- No boot conta do último evento do transcript. No Cursor, a variável é a janela de presença (sem ela, 10 min).
+- QA (22/out): liberado com ressalvas. Ressalva 1 (pedido de permissão de quem saiu) corrigida em `bd21c59`.
+  Observações em aberto: agente fora segue acessível por id (intencional); no Cursor a saída usa o aviso de sessão
+  encerrada, não o de inatividade.
 
 ## Próximos passos
 
 1. Teste sem código: túnel `ssh -L 4747:127.0.0.1:4747 henrique@100.124.226.33` e abrir
    `http://localhost:4747` no Windows. Confirmar que aprovar/mensagens/terminal funcionam.
-2. `feat/remote-mode`: desenhar a autenticação do navegador (sessão com senha ou token,
-   cookie `HttpOnly`/`Secure`, CSRF) e trocar a checagem de `Host` local por
-   "local OU autenticado" nas rotas de terminal, permissões, mensagens e personagem.
-   Manter o padrão atual (sem autenticação configurada = comportamento original).
-3. `feat/cursor-adapter`: investigar o formato de `~/.cursor/chats/` e os hooks do
-   `cursor-agent`; criar `server/sources/cursor/` seguindo o Codex.
-4. Rodar `npm test` e `npm run typecheck` a cada etapa.
+2. `feat/remote-mode`: implementado na worktree `.worktrees/feat-remote-mode`
+   (branch `feat/remote-mode`, 9 commits à frente de `main`). Desenho/plano em
+   `docs/hrq/2026-10-15-remote-mode-{design,plan}.md`. Pendente: smoke Tailscale
+   no LXC e decisão de PR/merge. Cursor = passo 3.
+3. `feat/cursor-adapter`: implementado na worktree `.worktrees/feat-cursor-adapter`
+   (MVP observação via `meta.json` + uso do plano no topo: Cursor Models / Other Models
+   via `GetCurrentPeriodUsage` e `~/.config/cursor/auth.json`). Desenho/plano em
+   `docs/hrq/2026-10-15-cursor-adapter-{design,plan}.md` e
+   `docs/hrq/2026-10-19-cursor-usage-{design,plan}.md`. Pendente: smoke no LXC e
+   PR/merge. Fases 2–3 (terminal/hooks) depois.
+4. `feat/idle-leave`: pronta; abrir PR para o original antes do PR do Cursor.
+5. Rodar `npm test` e `npm run typecheck` a cada etapa.
