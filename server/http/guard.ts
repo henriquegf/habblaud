@@ -10,6 +10,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
 
+/** Erro das rotas fechadas quando há senha (modo remoto) e a requisição não tem sessão. */
+export const AUTH_REQUIRED = 'autenticação necessária';
+
 /** Nomes liberados por HABBLAUD_ALLOWED_HOSTS (lista separada por vírgula; porta é ignorada). */
 export function parseAllowedHosts(raw: string | undefined): Set<string> {
   const out = new Set<string>();
@@ -43,6 +46,13 @@ function isLoopbackName(name: string): boolean {
   if (name === 'localhost' || name.endsWith('.localhost')) return true;
   if (name === '::1') return true;
   return isIP(name) === 4 && name.startsWith('127.');
+}
+
+/** Conexão vinda do próprio computador (127.x, ::1 ou ::ffff:127.x). */
+export function isLoopbackAddress(addr: string | undefined): boolean {
+  if (!addr) return false;
+  const a = addr.replace(/^::ffff:/i, '');
+  return a === '::1' || /^127\./.test(a);
 }
 
 /**
