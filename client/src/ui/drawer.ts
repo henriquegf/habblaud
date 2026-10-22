@@ -40,7 +40,7 @@ import {
 } from './model';
 import { isPrivilegedNow, PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
-import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
+import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf, supportsLiveTerminal } from './provider';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
 import { TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
@@ -227,7 +227,7 @@ class AgentView {
   private actIcon: HTMLElement;
   private actText: HTMLElement;
   private actTime: HTMLElement;
-  private actDetails: HTMLDetailsElement;
+  /** Detalhe da atividade atual (comando, caminho, prompt…) — sempre visível em Agora quando houver. */
   private actDetail: HTMLElement;
   /** Mandar mensagem ao agente principal pelo Habblaud (plugin habblaud-mensagens). */
   private composer: MessageComposer;
@@ -333,10 +333,12 @@ class AgentView {
 
     this.actIcon = h('span', { class: 'ui-now__icon', attrs: { 'aria-hidden': 'true' } });
     this.actText = h('span', { class: 'ui-now__text' });
+    this.actDetail = h('pre', { class: 'ui-now__detail ui-mono' });
     this.actTime = h('span', { class: 'ui-now__time' });
-    this.actDetail = h('pre', { class: 'ui-mono' });
-    this.actDetails = h('details', { class: 'ui-now__details' }, h('summary', { text: 'Detalhes' }), this.actDetail);
-    const nowSec = section('Agora', h('div', { class: 'ui-now' }, this.actIcon, h('div', { class: 'ui-now__body' }, this.actText, this.actTime)), this.actDetails);
+    const nowSec = section(
+      'Agora',
+      h('div', { class: 'ui-now' }, this.actIcon, h('div', { class: 'ui-now__body' }, this.actText, this.actDetail, this.actTime)),
+    );
     this.composer = new MessageComposer(ctx, 'drawer');
     this.msgSec = section('Mandar mensagem', this.composer.el);
     this.social = new SocialSection(ctx);
@@ -422,7 +424,6 @@ class AgentView {
     this.tasks.clear();
     this.team.clear();
     this.shells.clear();
-    this.actDetails.open = false;
     const req = ++this.historyReq;
     this.ctx.store
       .agentHistory(id)
@@ -499,7 +500,7 @@ class AgentView {
     const following = this.ctx.world.getOptions().followSelected;
     setAttr(this.followBtn, 'aria-pressed', String(following));
     this.followBtn.classList.toggle('is-on', following);
-    this.renderTerminalButton(!!live);
+    this.renderTerminalButton(!!live, provider);
 
     // Alerta.
     const waiting = a.status === 'waiting' && !!live;
@@ -546,8 +547,10 @@ class AgentView {
     setText(this.actTime, act ? `${relativeTime(act.at, now)}${showDuration ? ` · levou ${formatDuration(act.durationMs!)}` : ''}` : '');
     this.actText.classList.toggle('is-error', !!act?.error);
     const detail = act?.detail ?? '';
-    setHidden(this.actDetails, !detail);
-    setText(this.actDetail, detail);
+    // Só mostra o detalhe quando acrescenta algo além do texto curto (evita repetir o mesmo conteúdo).
+    const showDetail = !!detail && detail.trim() !== (act?.text ?? '').trim();
+    setHidden(this.actDetail, !showDetail);
+    setText(this.actDetail, showDetail ? detail : '');
 
     // Mandar mensagem: só para principais presentes (com o recurso ligado e a página local; sem o plugin, a dica).
     setHidden(this.msgSec.el, this.composer.render(live, this.id) === 'off');
@@ -624,6 +627,11 @@ class AgentView {
   }
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {
+    if (!supportsLiveTerminal(provider)) {
+      setHidden(this.termBtn, true);
+      return;
+    }
+    setHidden(this.termBtn, false);
     const available = !!this.ctx.store.snapshot?.meta.terminal;
     const open = this.terminal.agentId === this.id;
     // aria-disabled (e não disabled): o botão continua focável e a dica do porquê aparece no hover.
@@ -650,16 +658,19 @@ class AgentView {
   private renderStats(a: AgentInfo, now: number): void {
     const s = a.stats;
     const st = this.stats;
+    const provider = providerOf(a);
+    const codex = provider === 'codex';
+    const cursor = provider === 'cursor';
     st.set('tools', formatInt(s.toolCalls));
-    st.set('tokensIn', formatTokens(s.tokensIn));
-    st.set('tokensOut', formatTokens(s.tokensOut));
+    // Cursor: tokens por sessão não vêm do store.db plaintext — some a linha em vez de mostrar 0.
+    st.set('tokensIn', cursor && !s.tokensIn ? null : formatTokens(s.tokensIn));
+    st.set('tokensOut', cursor && !s.tokensOut ? null : formatTokens(s.tokensOut));
     st.set('cost', s.costUSD !== undefined ? formatUSD(s.costUSD) : null);
-    const codex = providerOf(a) === 'codex';
     const hasLines = s.linesAdded !== undefined || s.linesRemoved !== undefined;
     st.show('lines', hasLines);
     setText(this.linesPlus, `+${formatInt(s.linesAdded ?? 0)}`);
     setText(this.linesMinus, `−${formatInt(s.linesRemoved ?? 0)}`);
-    st.set('subs', a.kind === 'main' ? formatInt(s.subagents) : null);
+    st.set('subs', a.kind === 'main' && !cursor ? formatInt(s.subagents) : null);
     st.set('model', prettyModel(a.model));
     st.set('branch', a.gitBranch ?? null);
     // Codex: a política de aprovação (quando o servidor a manda) no lugar do modo de permissão do Claude Code.

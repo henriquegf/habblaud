@@ -12,9 +12,10 @@ export type AgentKind = 'main' | 'sub';
  * De qual ferramenta vem o agente (ou a conta, a fonte, a sessão, o pedido). Nos tipos do protocolo o campo
  * `provider` é opcional e AUSENTE quer dizer 'claude' (tudo o que existia antes do Codex continua igual).
  * - claude: Claude Code;
- * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME).
+ * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME);
+ * - cursor: Cursor Agent / IDE (conversas em ~/.cursor/chats/).
  */
-export type Provider = 'claude' | 'codex';
+export type Provider = 'claude' | 'codex' | 'cursor';
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -281,13 +282,15 @@ export interface AccountUsage {
   sevenDayOpus?: UsageWindow;
   sevenDaySonnet?: UsageWindow;
   /**
-   * Origem dos números (todas são arquivos locais gravados pela própria ferramenta):
+   * Origem dos números:
    * - 'statusline': capturado ao vivo e gravado em ~/.habblaud/usage/<conta>.json pelo mod do Habblaud
    *   (mod/habblaud, recomendado) ou pelo scripts/statusline-tap.mjs (campo rate_limits do statusline);
    * - 'cache': `cachedUsageUtilization` gravado pelo próprio Claude Code (atualiza quando alguém roda /usage);
-   * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda).
+   * - 'codex': `rate_limits` dos arquivos de sessão do Codex (só se renovam enquanto alguma sessão roda);
+   * - 'cursor': `GetCurrentPeriodUsage` da API do Cursor (token em ~/.config/cursor/auth.json, só no host).
+   *   Para Cursor, `fiveHour` = Cursor Models (autoPercentUsed) e `sevenDay` = Other Models (apiPercentUsed).
    */
-  source: 'cache' | 'statusline' | 'codex';
+  source: 'cache' | 'statusline' | 'codex' | 'cursor';
   /** Quem gravou o arquivo ao vivo ('statusline'): o mod do Habblaud no Claude Code ou o tap de statusline. */
   via?: 'mod' | 'tap';
   /**
